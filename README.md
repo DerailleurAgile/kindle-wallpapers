@@ -10,6 +10,17 @@ mkwall --levels 16 --dither sources/   # bake a panel-accurate dither
 mkwall --fit pad --bg white sources/   # letterbox instead of centre-crop
 ```
 
+![mkwall converting a colour source to a 1072x1448 grayscale wallpaper, with and without dithering](docs/example.png)
+
+The middle panel is why `--levels` exists: at 16 levels an undithered sky
+breaks into visible contours, and the foreground crushes to black. The right
+panel is the same file with the shadows opened and the gradient dithered.
+
+Both are shown as the panel renders them, not as the 8-bit files look on a
+monitor. The scene is synthetic so the repo can license its own demo art —
+`examples/make-demo.sh` builds the source, `examples/make-screenshot.sh`
+rebuilds the comparison.
+
 ## Target device
 
 Defaults are for a **Kindle Paperwhite 3 (7th gen, 2015)**:
