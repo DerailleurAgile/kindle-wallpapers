@@ -84,6 +84,8 @@ convention. On Kindle, KOReader lives at `/mnt/us/koreader`.
 | `-s, --size WxH` | explicit pixel size, overrides `--device` |
 | `-o, --outdir DIR` | output directory (default: `out`) |
 | `--fit MODE` | `crop` (fill + centre-crop, default), `pad`, `stretch` |
+| `--gravity DIR` | which part a crop keeps: `center` (default), `north`, `south`, `east`, `west`, or a corner |
+| `--gamma N` | `>1` opens shadows, e.g. `1.6` for dark art (default: `1.0`) |
 | `--bg COLOR` | pad colour (default: `white`) |
 | `--bc AxB` | brightness-contrast, or `none` (default: `5x8`) |
 | `--levels N` | quantize to N gray levels, `0` = off (default: `0`) |
@@ -98,11 +100,40 @@ convention. On Kindle, KOReader lives at `/mnt/us/koreader`.
 Inputs can be files or directories (directories are scanned one level deep).
 JPEG, PNG, TIFF, WebP, BMP, GIF, HEIC, AVIF, SVG and PDF all work as sources.
 
+## Per-image tuning
+
+One pass over a folder gets you usable files, but the three source types want
+different treatment. Worked examples:
+
+```sh
+# Dark painted art: open the shadows, dither the smoke gradients.
+mkwall --gamma 1.6 --levels 16 --dither sources/box-art.jpg
+
+# Pen-and-ink plate: full 8-bit ramp, no dither — noise dirties clean paper.
+mkwall sources/creatures.jpeg
+
+# Flat-tone poster with a title: anchor the crop so the type survives.
+mkwall --gravity north --levels 16 --dither sources/poster.jpg
+```
+
+Two things worth checking before you commit to a batch:
+
+- **Where the crop lands.** `mkwall` only warns past 15% loss, which is late if
+  the missing 10% is a headline. Compare source and target aspect first —
+  `magick identify -format '%f %wx%h ar=%[fx:w/h]\n' sources/*` against the
+  panel's 0.740 — and reach for `--gravity` or `--fit pad` when it matters.
+- **How dark the result is.** `magick identify -format '%f mean=%[fx:int(mean*255)]\n' out/*.png`
+  — anything with a mean much under 100 will read as a murky slab on e-ink and
+  wants `--gamma`.
+
 ## Design notes for this panel
 
 - **16 gray levels, not 256.** Smooth gradients band visibly. Either embrace
   flat tones and hard edges, or dither deliberately with
   `--levels 16 --dither` rather than letting the device decide.
+- **Dither costs nothing on painted art and hurts line art.** Pen-and-ink on
+  white paper has almost no gradients to smooth, so error diffusion just
+  speckles the background.
 - **E-ink reads darker than a monitor** — midtones close up. The default
   `--bc 5x8` lifts them a little; tune per image. Keep true black for accents
   only, since large black fields ghost into the next refresh.

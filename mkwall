@@ -33,6 +33,8 @@ DEVICES=(
 device=pw3
 outdir=out
 fit=crop            # crop | pad | stretch
+gravity=center      # which part of the frame a crop keeps
+gamma=1.0           # >1 opens up shadows; the fix for dark art on e-ink
 bg=white
 bc="5x8"            # -brightness-contrast; "none" to skip
 levels=0            # 0 = leave full 8-bit ramp; 16 = quantize to panel levels
@@ -58,6 +60,10 @@ Options:
   -s, --size WxH       explicit pixel size, overrides --device
   -o, --outdir DIR     output directory (default: out)
       --fit MODE       crop (fill + centre-crop, default) | pad | stretch
+      --gravity DIR    which part a crop keeps: center (default), north,
+                       south, east, west, northwest, northeast, southwest,
+                       southeast
+      --gamma N        >1 opens shadows, e.g. 1.4 for dark art (default: 1.0)
       --bg COLOR       pad colour (default: white)
       --bc AxB         brightness-contrast, or "none" (default: 5x8)
       --levels N       quantize to N gray levels, 0 = off (default: 0)
@@ -103,6 +109,8 @@ while (($#)); do
     -s|--size)     size=${2:?--size needs WxH};        shift 2 ;;
     -o|--outdir)   outdir=${2:?--outdir needs a path}; shift 2 ;;
     --fit)         fit=${2:?--fit needs a mode};       shift 2 ;;
+    --gravity)     gravity=${2:?--gravity needs a direction}; shift 2 ;;
+    --gamma)       gamma=${2:?--gamma needs a number};  shift 2 ;;
     --bg)          bg=${2:?--bg needs a colour};       shift 2 ;;
     --bc)          bc=${2:?--bc needs AxB or none};    shift 2 ;;
     --levels)      levels=${2:?--levels needs N};      shift 2 ;;
@@ -124,6 +132,12 @@ done
 command -v magick >/dev/null || die "ImageMagick 7 not found (need the 'magick' command)"
 
 case $fit in crop|pad|stretch) ;; *) die "--fit must be crop, pad or stretch" 2 ;; esac
+case $gravity in
+  center|north|south|east|west|northwest|northeast|southwest|southeast) ;;
+  *) die "--gravity must be center, north, south, east, west or a corner" 2 ;;
+esac
+[[ $gamma =~ ^[0-9]*\.?[0-9]+$ ]] || die "--gamma must be a number" 2
+awk -v g="$gamma" 'BEGIN{exit !(g>0)}' || die "--gamma must be greater than 0" 2
 [[ $levels =~ ^[0-9]+$ ]] || die "--levels must be a number" 2
 (( levels == 0 || levels >= 2 )) || die "--levels must be 0 or >= 2" 2
 
@@ -160,19 +174,22 @@ done
 
 ((dryrun)) || mkdir -p "$outdir" || die "cannot create '$outdir'"
 
-say "$PROG: $device ${W}x${H}, fit=$fit, grayscale ${format}$( ((levels)) && printf ', %s levels (dither=%s)' "$levels" "$dither" ) -> $outdir/"
+say "$PROG: $device ${W}x${H}, fit=$fit$( [[ $fit != stretch && $gravity != center ]] && printf '/%s' "$gravity" )$( awk -v g="$gamma" 'BEGIN{exit (g==1)}' && printf ', gamma=%s' "$gamma" ), grayscale ${format}$( ((levels)) && printf ', %s levels (dither=%s)' "$levels" "$dither" ) -> $outdir/"
 
 # --- shared magick arguments -------------------------------------------------
 pre=(-auto-orient -background "$bg" -alpha remove -alpha off -colorspace Gray)
 
 case $fit in
-  crop)    geom=(-filter Lanczos -resize "${W}x${H}^" -gravity center -extent "${W}x${H}") ;;
-  pad)     geom=(-filter Lanczos -resize "${W}x${H}"  -gravity center -extent "${W}x${H}") ;;
+  crop)    geom=(-filter Lanczos -resize "${W}x${H}^" -gravity "$gravity" -extent "${W}x${H}") ;;
+  pad)     geom=(-filter Lanczos -resize "${W}x${H}"  -gravity "$gravity" -extent "${W}x${H}") ;;
   stretch) geom=(-filter Lanczos -resize "${W}x${H}!") ;;
 esac
 
+# Gamma first: it opens shadows without moving the black point or blowing
+# highlights, which -brightness-contrast alone cannot do on dark artwork.
 tone=()
-[[ $bc != none ]] && tone=(-brightness-contrast "$bc")
+awk -v g="$gamma" 'BEGIN{exit (g==1)}' && tone+=(-gamma "$gamma")
+[[ $bc != none ]] && tone+=(-brightness-contrast "$bc")
 
 # Quantizing via -remap onto a generated N-step ramp, rather than -colors:
 # -colors picks its own palette and leaks a few extra levels through Q16
