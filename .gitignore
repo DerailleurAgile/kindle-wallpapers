@@ -1,0 +1,5 @@
+# Source images and generated wallpapers stay local — this repo tracks the
+# tooling, not the artwork (and e-ink PNGs bloat history fast).
+sources/*
+out*/
+!sources/.gitkeep
